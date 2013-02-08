@@ -1,10 +1,15 @@
 Work-in-progress "starter" example for Splout-Hadoop API using Cascading.
 
-IMPORTANT: native/ folder must be added to LD_LIBRARY_PATH in local mode
-TODO: Make a maven task that copies the native libs from the uncompressed splout-resources JAR to native/
-TODO: Doc.
-TODO: Improve partitioning strategy.
-TODO: Top X sources / pages.
+-------------------------------------------------------------------------
+
+IMPORTANT: native/ folder must be added to LD_LIBRARY_PATH in local/development mode.
+
+-------------------------------------------------------------------------
+
+* TODO: Do a maven task that copies the native libs from the uncompressed splout-resources JAR to native/.
+* TODO: Doc.
+* TODO: Improve partitioning strategy.
+* TODO: Top X sources / pages.
 
 -------------------------------------------------------------------------
 
