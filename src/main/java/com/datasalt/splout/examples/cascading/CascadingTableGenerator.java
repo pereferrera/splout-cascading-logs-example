@@ -16,7 +16,6 @@ import org.apache.hadoop.io.serializer.WritableSerialization;
 import cascading.tuple.hadoop.TupleSerialization;
 import cascading.util.Util;
 
-import com.datasalt.pangool.io.Schema;
 import com.splout.db.common.SploutHadoopConfiguration;
 import com.splout.db.hadoop.StoreDeployerTool;
 import com.splout.db.hadoop.TablespaceDepSpec;
@@ -34,7 +33,7 @@ public class CascadingTableGenerator {
 
 		private String tablespaceName;
 		private String tableName;
-		private String tableSchema;
+		private String[] columnNames;
 		private String[] partitionBy;
 
 		public void setTableName(String tableName) {
@@ -45,9 +44,9 @@ public class CascadingTableGenerator {
 			this.tablespaceName = tablespaceName;
 		}
 
-		public void setTableSchema(String tableSchema) {
-			this.tableSchema = tableSchema;
-		}
+		public void setColumnNames(String... columnNames) {
+	    this.columnNames = columnNames;
+    }
 
 		public void setPartitionBy(String... partitionBy) {
 			this.partitionBy = partitionBy;
@@ -106,14 +105,11 @@ public class CascadingTableGenerator {
 			outputPathFileSystem.delete(outputToIndexer, true);
 		}
 
-		// define the Schema of the Splout SQL table
-		Schema schema = new Schema(args.tableName, com.datasalt.pangool.io.Fields.parse(args.tableSchema));
 		// 1) call the TablespaceGenerator for generating the indexed SQL files
-		// we have to define the input format for Splout: it is text, tabulated.
-		CascadingInputFormat inputFormat = new CascadingInputFormat(schema);
+		CascadingInputFormat inputFormat = new CascadingInputFormat(args.tableName, args.columnNames);
 		// we build a TablespaceSpec object with the partitioning strategy and a number of partitions
 		// this is the short way of building a simple TablespaceSpec, otherwise you must use TablespaceBuilder.
-		TablespaceSpec spec = TablespaceSpec.of(schema, args.partitionBy, inputToIndexer, inputFormat,
+		TablespaceSpec spec = TablespaceSpec.of(conf, args.partitionBy, inputToIndexer, inputFormat,
 		    nPartitions);
 		// instantiate and call the TablespaceGenerator
 		TablespaceGenerator viewGenerator = new TablespaceGenerator(spec, outputToIndexer, this.getClass());

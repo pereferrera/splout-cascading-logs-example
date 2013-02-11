@@ -2,6 +2,8 @@ package com.datasalt.splout.examples.cascading;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapreduce.InputSplit;
@@ -12,6 +14,7 @@ import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 
 import com.datasalt.pangool.io.ITuple;
 import com.datasalt.pangool.io.Schema;
+import com.datasalt.pangool.io.Schema.Field;
 import com.datasalt.pangool.io.Tuple;
 
 /**
@@ -20,10 +23,12 @@ import com.datasalt.pangool.io.Tuple;
 @SuppressWarnings("serial")
 public class CascadingInputFormat extends FileInputFormat<ITuple, NullWritable> implements Serializable {
 
-	private Schema pangoolSchema;
+	private String tableName;
+	private String[] fieldNames;
 
-	public CascadingInputFormat(Schema pangoolSchema) {
-		this.pangoolSchema = pangoolSchema;
+	public CascadingInputFormat(String tableName, String... fieldNames) {
+		this.tableName = tableName;
+		this.fieldNames = fieldNames;
 	}
 
 	@Override
@@ -33,7 +38,7 @@ public class CascadingInputFormat extends FileInputFormat<ITuple, NullWritable> 
 		return new RecordReader<ITuple, NullWritable>() {
 
 			RecordReader<cascading.tuple.Tuple, cascading.tuple.Tuple> delegatingRecordReader;
-			ITuple tuple = new Tuple(pangoolSchema);
+			ITuple tuple;
 
 			@Override
 			public void close() throws IOException {
@@ -41,15 +46,38 @@ public class CascadingInputFormat extends FileInputFormat<ITuple, NullWritable> 
 
 			@Override
 			public ITuple getCurrentKey() throws IOException, InterruptedException {
-				cascading.tuple.Tuple cTuple = delegatingRecordReader.getCurrentKey();
+				cascading.tuple.Tuple cTuple = delegatingRecordReader.getCurrentValue();
+				
 				if(tuple == null) {
 					int i = 0;
-					for(@SuppressWarnings("unused")
-					Class<?> cl : cTuple.getTypes()) {
-						tuple.set(i, cTuple.getObject(i));
+					List<Field> fields = new ArrayList<Field>();
+					
+					for(Class<?> cl : cTuple.getTypes()) {
+						
+						if(cl.equals(Integer.class)) {
+							fields.add(Field.create(fieldNames[i], Field.Type.INT));
+						} else if(cl.equals(Long.class)) {
+							fields.add(Field.create(fieldNames[i], Field.Type.LONG));
+						} else if(cl.equals(Float.class)) {
+							fields.add(Field.create(fieldNames[i], Field.Type.FLOAT));
+						} else if(cl.equals(Double.class)) {
+							fields.add(Field.create(fieldNames[i], Field.Type.DOUBLE));
+						} else if(cl.equals(String.class)) {
+							fields.add(Field.create(fieldNames[i], Field.Type.STRING));
+						} 
+						
 						i++;
 					}
+					
+					// TODO Error checking etc
+					
+					tuple = new Tuple(new Schema(tableName, fields));
 				}
+				
+				for(int i = 0; i < tuple.getSchema().getFields().size(); i++) {
+					tuple.set(i, cTuple.getObject(i));
+				}
+				
 				return tuple;
 			}
 

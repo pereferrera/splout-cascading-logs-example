@@ -74,7 +74,7 @@ public class LogIndexer implements Tool {
 			return -1;
 		}
 
-		analyzeLogs(inputPath, outputPath);
+//		analyzeLogs(inputPath, outputPath);
 		deployToSplout(outputPath, qnode, 2);
 
 		return 1;
@@ -179,7 +179,7 @@ public class LogIndexer implements Tool {
 		
 		// define the Schema of the Splout SQL table
 		CascadingTableGenerator.Args args = new CascadingTableGenerator.Args();
-		args.setTableSchema("day:int,month:int,year:int,count:long,metric:string,value:string");
+		args.setColumnNames("day", "month", "year", "count", "metric", "value");
 		args.setTableName("apache_logs_analytics");
 		args.setTablespaceName("apache_logs_analytics");
 		args.setPartitionBy("metric");
