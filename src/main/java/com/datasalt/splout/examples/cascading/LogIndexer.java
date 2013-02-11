@@ -1,17 +1,9 @@
 package com.datasalt.splout.examples.cascading;
 
-import static com.datasalt.pangool.tuplemr.mapred.lib.input.TupleTextInputFormat.NO_QUOTE_CHARACTER;
-import static com.datasalt.pangool.tuplemr.mapred.lib.input.TupleTextInputFormat.NO_SEPARATOR_CHARACTER;
-
-import java.io.File;
-import java.util.ArrayList;
 import java.util.Calendar;
-import java.util.List;
 import java.util.Properties;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 
@@ -28,6 +20,7 @@ import cascading.pipe.Merge;
 import cascading.pipe.Pipe;
 import cascading.pipe.assembly.Rename;
 import cascading.property.AppProps;
+import cascading.scheme.hadoop.SequenceFile;
 import cascading.scheme.hadoop.TextLine;
 import cascading.tap.SinkMode;
 import cascading.tap.Tap;
@@ -38,16 +31,6 @@ import cascading.tuple.Fields;
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
-import com.datasalt.pangool.io.Schema;
-import com.datasalt.pangool.tuplemr.mapred.lib.input.TupleTextInputFormat;
-import com.datasalt.pangool.tuplemr.mapred.lib.input.TupleTextInputFormat.FieldSelector;
-import com.splout.db.common.SploutHadoopConfiguration;
-import com.splout.db.hadoop.StoreDeployerTool;
-import com.splout.db.hadoop.TablespaceDepSpec;
-import com.splout.db.hadoop.TablespaceGenerator;
-import com.splout.db.hadoop.TablespaceSpec;
-import com.splout.db.hadoop.TupleSampler.DefaultSamplingOptions;
-import com.splout.db.hadoop.TupleSampler.SamplingType;
 
 /**
  * Work-in-progress.
@@ -57,7 +40,7 @@ public class LogIndexer implements Tool {
 	@Parameter(required = true, names = { "-q", "--qnode" }, description = "A QNode address, will be used for deploying the log indexer analytics.")
 	private String qnode;
 
-	@Parameter(required = true, names = { "-i", "--input" }, description = "The input path where the Apache logs are.")
+	@Parameter(required = true, names = { "-i", "--input" }, description = "The input path where the Apache logs are. If using HDFS, it must be absolute (e.g. hdfs://localhost:8020/user/foo/foo). Otherwise it will be considered a local path in the local filesystem.")
 	private String inputPath;
 
 	@Parameter(required = true, names = { "-o", "--output" }, description = "The output path where the Cascading process will output its result.")
@@ -172,7 +155,7 @@ public class LogIndexer implements Tool {
 
 		// create a SINK tap to write to the default filesystem
 		// by default, TextLine writes all fields out
-		Tap remoteLogTap = new Hfs(new TextLine(), outputPath, SinkMode.REPLACE);
+		Tap remoteLogTap = new Hfs(new SequenceFile(Fields.ALL), outputPath, SinkMode.REPLACE);
 
 		// set the current job jar
 		Properties properties = new Properties();
@@ -193,39 +176,16 @@ public class LogIndexer implements Tool {
 	 * There will be one table: ("day", "month", "year", "count", "metric", "value")
 	 */
 	public void deployToSplout(String outputPath, String qNode, int nPartitions) throws Exception {
-		// add sqlite native libs to DistributedCache
-		if(!FileSystem.getLocal(conf).equals(FileSystem.get(conf))) {
-			File nativeLibs = new File("native");
-			if(nativeLibs.exists()) {
-				SploutHadoopConfiguration.addSQLite4JavaNativeLibsToDC(conf);
-			}
-		}
-		
-		// delete indexed files if they already exist
-		Path inputToIndexer = new Path(outputPath);
-		FileSystem outputPathFileSystem = inputToIndexer.getFileSystem(conf);
-		Path outputToIndexer = new Path(outputPath + "-indexed");
-		if(outputPathFileSystem.exists(outputToIndexer)) {
-			outputPathFileSystem.delete(outputToIndexer, true);
-		}
 		
 		// define the Schema of the Splout SQL table
-		Schema schema = new Schema("apache_logs_analytics", com.datasalt.pangool.io.Fields.parse("day:int,month:int,year:int,count:long,metric:string,value:string"));
-		// 1) call the TablespaceGenerator for generating the indexed SQL files
-		// we have to define the input format for Splout: it is text, tabulated.
-		TupleTextInputFormat inputFormat = new TupleTextInputFormat(schema, false, false, '\t', NO_QUOTE_CHARACTER, NO_SEPARATOR_CHARACTER, FieldSelector.NONE, null);
-		// we build a TablespaceSpec object with the partitioning strategy and a number of partitions
-		// this is the short way of building a simple TablespaceSpec, otherwise you must use TablespaceBuilder.
-		TablespaceSpec spec = TablespaceSpec.of(schema, "metric", inputToIndexer, inputFormat, nPartitions);
-		// instantiate and call the TablespaceGenerator
-		TablespaceGenerator viewGenerator = new TablespaceGenerator(spec, outputToIndexer);
-		viewGenerator.generateView(conf, SamplingType.DEFAULT, new DefaultSamplingOptions());
-		
-		// 2) finally, deploy the generated files
-		StoreDeployerTool deployer = new StoreDeployerTool(qNode, conf);
-		List<TablespaceDepSpec> specs = new ArrayList<TablespaceDepSpec>();
-		specs.add(new TablespaceDepSpec("apache_logs_analytics", outputToIndexer.toString(), 1, null));
-		deployer.deploy(specs);
+		CascadingTableGenerator.Args args = new CascadingTableGenerator.Args();
+		args.setTableSchema("day:int,month:int,year:int,count:long,metric:string,value:string");
+		args.setTableName("apache_logs_analytics");
+		args.setTablespaceName("apache_logs_analytics");
+		args.setPartitionBy("metric");
+
+		CascadingTableGenerator generator = new CascadingTableGenerator(args, conf);
+		generator.deployToSplout(outputPath, qNode, nPartitions);
 	}
 	
 	public static void main(String[] args) throws Exception {

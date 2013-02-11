@@ -2,7 +2,10 @@ Work-in-progress "starter" example for Splout-Hadoop API using Cascading.
 
 -------------------------------------------------------------------------
 
-IMPORTANT: native/ folder must be added to LD_LIBRARY_PATH in local/development mode.
+IMPORTANT: native libraries must be added to LD_LIBRARY_PATH in local/development mode.
+Eclipse:
+
+Run Configurations -> ... -> JRE -> Installed JREs... -> Click -> Edit ... -> Default VM Arguments: -Djava.library.path=target/maven-shared-archive-resources/
 
 -------------------------------------------------------------------------
 
@@ -21,8 +24,3 @@ http://www.pg.com.eg/log/
 Starting point for log analysis:
 
 https://github.com/Cascading/cascading.samples/blob/master/logparser/src/java/logparser/Main.java
-
-TODO: Implement a Tap?
-
-https://github.com/nathanmarz/elephantdb-cascading/blob/master/src/jvm/elephantdb/cascading/ElephantDBTap.java
-https://gist.github.com/nathanmarz/841668
