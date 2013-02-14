@@ -9,16 +9,10 @@ import org.apache.hadoop.util.ToolRunner;
 
 import cascading.flow.Flow;
 import cascading.flow.hadoop.HadoopFlowConnector;
-import cascading.operation.Insert;
-import cascading.operation.aggregator.Count;
 import cascading.operation.regex.RegexParser;
 import cascading.operation.text.DateParser;
 import cascading.pipe.Each;
-import cascading.pipe.Every;
-import cascading.pipe.GroupBy;
-import cascading.pipe.Merge;
 import cascading.pipe.Pipe;
-import cascading.pipe.assembly.Rename;
 import cascading.property.AppProps;
 import cascading.scheme.hadoop.SequenceFile;
 import cascading.scheme.hadoop.TextLine;
@@ -61,7 +55,7 @@ public class LogIndexer implements Tool {
 	@Override
 	public int run(String[] args) throws Exception {
 		JCommander jComm = new JCommander(this);
-		jComm.setProgramName("Splout-Hadoop Starter Example - log analysis with Cascading & serving with Splout SQL.");
+		jComm.setProgramName("Splout-Hadoop-Cascading Example - log parsing with Cascading & serving with Splout SQL.");
 		try {
 			jComm.parse(args);
 		} catch(ParameterException e) {
@@ -74,20 +68,17 @@ public class LogIndexer implements Tool {
 			return -1;
 		}
 
-//		analyzeLogs(inputPath, outputPath);
+		indexLogs(inputPath, outputPath);
 		deployToSplout(outputPath, qnode, 2);
 
 		return 1;
 	}
 	
 	/**
-	 * This method takes all the Apache logs as input and parses them and analyzes them using Cascading. What the analysis
-	 * will do is pretty simple: provide aggregate counts for each day, each day and ip, each day and status code and each
-	 * day and page. All the counts will be normalized into the same schema: ("day", "month", "year", "count", "metric",
-	 * "value") that will be the final table we will load into Splout SQL.
+	 * This method takes all the Apache logs as input and ...
 	 */
 	@SuppressWarnings("rawtypes")
-	public void analyzeLogs(String inputPath, String outputPath) {
+	public void indexLogs(String inputPath, String outputPath) {
 		// define what the input file looks like, "offset" is bytes from beginning
 		TextLine scheme = new TextLine(new Fields("offset", "line"));
 
@@ -96,65 +87,29 @@ public class LogIndexer implements Tool {
 		    inputPath);
 
 		// declare the field names we will parse out of the log file
-		Fields apacheFields = new Fields("ip", "time", "method", "page", "code", "size");
+		Fields apacheFields = new Fields("ip", "user", "time", "method", "page", "code", "size");
 
 		// define the regular expression to parse the log file with
-		String apacheRegex = "^([^ ]*) +[^ ]* +[^ ]* +\\[([^]]*)\\] +\\\"([^ ]*) ([^ ]*) [^ ]*\\\" ([^ ]*) ([^ ]*).*$";
+		String apacheRegex = "^([^ ]*) +[^ ]* +([^ ]*) +\\[([^]]*)\\] +\\\"([^ ]*) ([^ ]*) [^ ]*\\\" ([^ ]*) ([^ ]*).*$";
 
 		// declare the groups from the above regex we want to keep. each regex group will be given
 		// a field name from 'apacheFields', above, respectively
-		int[] allGroups = { 1, 2, 3, 4, 5, 6 };
+		int[] allGroups = { 1, 2, 3, 4, 5, 6, 7 };
 
 		// create the parser
 		RegexParser parser = new RegexParser(apacheFields, apacheRegex, allGroups);
 
 		// create the input analysis Pipe
-		Pipe analyzePipe = new Each("analyze", new Fields("line"), parser, Fields.RESULTS);
+		Pipe parsePipe = new Each("parse", new Fields("line"), parser, Fields.RESULTS);
 
 		// parse the date and split it into day + month + year
-		analyzePipe = new Each(analyzePipe, new Fields("time"), new DateParser(new Fields("day", "month",
+		parsePipe = new Each(parsePipe, new Fields("time"), new DateParser(new Fields("day", "month",
 		    "year"), new int[] { Calendar.DAY_OF_MONTH, Calendar.MONTH, Calendar.YEAR },
 		    "dd/MMM/yyyy:HH:mm:ss"), Fields.ALL);
 
-		// 1) calculate daily total hits
-		Pipe dailyHits = new GroupBy("dailyhits", analyzePipe, new Fields("day", "month", "year"));
-		// count() function does the job of doing count(*) for each group
-		dailyHits = new Every(dailyHits, new Count());
-		// we add constant values: value = "", metric = "ALL"
-		dailyHits = new Each(dailyHits, new Insert(new Fields("metric", "value"), "ALL", ""), Fields.ALL);
-
-		// 2) calculate daily unique IP visits
-		Pipe dailyIpHits = new GroupBy("dailyiphits", analyzePipe, new Fields("day", "month", "year", "ip"));
-		dailyIpHits = new Every(dailyIpHits, new Count());
-		// we add constant value: metric = "IP"
-		dailyIpHits = new Each(dailyIpHits, new Insert(new Fields("metric"), "IP"), Fields.ALL);
-		// we rename "ip" field to "value"
-		dailyIpHits = new Rename(dailyIpHits, new Fields("ip"), new Fields("value"));
-
-		// 3) calculate daily page views for each page
-		Pipe dailyPageHits = new GroupBy("dailypagehits", analyzePipe, new Fields("day", "month", "year",
-		    "page"));
-		dailyPageHits = new Every(dailyPageHits, new Count());
-		// we add constant value: metric = "PAGE"
-		dailyPageHits = new Each(dailyPageHits, new Insert(new Fields("metric"), "PAGE"), Fields.ALL);
-		// we rename "page" to "value"
-		dailyPageHits = new Rename(dailyPageHits, new Fields("page"), new Fields("value"));
-
-		// 4) calculate daily HTTP status code counts
-		Pipe dailyCodeHits = new GroupBy("dailycodehits", analyzePipe, new Fields("day", "month", "year",
-		    "code"));
-		dailyCodeHits = new Every(dailyCodeHits, new Count());
-		// we add constant value: metric = "CODE"
-		dailyCodeHits = new Each(dailyCodeHits, new Insert(new Fields("metric"), "CODE"), Fields.ALL);
-		// we rename "code" to "value"
-		dailyCodeHits = new Rename(dailyCodeHits, new Fields("code"), new Fields("value"));
-
-		// merge all the stats into the same pipe: ("day", "month", "year", "count", "metric", "value")
-		// this will be the final SQL table we will use in the app.
-		Pipe mergedPipe = new Merge(dailyHits, dailyIpHits, dailyPageHits, dailyCodeHits);
-
 		// create a SINK tap to write to the default filesystem
-		// by default, TextLine writes all fields out
+		// To use the output in Splout, save it in binary (SequenceFile).
+		// In this way integration is both efficient and easy (no need to re-parse the file again).
 		Tap remoteLogTap = new Hfs(new SequenceFile(Fields.ALL), outputPath, SinkMode.REPLACE);
 
 		// set the current job jar
@@ -162,7 +117,7 @@ public class LogIndexer implements Tool {
 		AppProps.setApplicationJarClass(properties, LogIndexer.class);
 
 		// connect the assembly to the SOURCE and SINK taps
-		Flow parsedLogFlow = new HadoopFlowConnector(properties).connect(logTap, remoteLogTap, mergedPipe);
+		Flow parsedLogFlow = new HadoopFlowConnector(properties).connect(logTap, remoteLogTap, parsePipe);
 
 		// start execution of the flow (either locally or on a cluster)
 		parsedLogFlow.start();
@@ -173,16 +128,15 @@ public class LogIndexer implements Tool {
 
 	/**
 	 * Takes the output of the Cascading process and deploys it to Splout SQL using a QNode address.
-	 * There will be one table: ("day", "month", "year", "count", "metric", "value")
 	 */
 	public void deployToSplout(String outputPath, String qNode, int nPartitions) throws Exception {
 		
 		// define the Schema of the Splout SQL table
 		CascadingTableGenerator.Args args = new CascadingTableGenerator.Args();
-		args.setColumnNames("day", "month", "year", "count", "metric", "value");
+		args.setColumnNames("ip", "user", "date", "method", "page", "response", "bytes", "day", "month", "year");
 		args.setTableName("apache_logs_analytics");
 		args.setTablespaceName("apache_logs_analytics");
-		args.setPartitionBy("metric");
+		args.setPartitionBy("user");
 
 		CascadingTableGenerator generator = new CascadingTableGenerator(args, conf);
 		generator.deployToSplout(outputPath, qNode, nPartitions);
