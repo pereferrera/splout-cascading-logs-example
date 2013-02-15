@@ -16,9 +16,14 @@ handling user calls and maintaining client loyalty. For that, it needs to be abl
 This helps in detecting the root cause of an issue they user might have had, and can also be valuable information for the 
 technical department in detecting and fixing new bugs.
 
+![alt text](https://raw.github.com/pereferrera/splout-cascading-logs-example/master/raw-logs.png)
+
 * For any user, be able to "visualize" an activity "footprint" for performing "loyalty actions" or campaigns. For instance, knowing the
 top 5 categories the user interacted with in the past days allows the "customer service" to offer discounts or any other promotional
 products on interesting categories for the user.   
+
+![alt text](https://raw.github.com/pereferrera/splout-cascading-logs-example/master/pie-chart.png)
+![alt text](https://raw.github.com/pereferrera/splout-cascading-logs-example/master/timeline.png)
 
 The solution
 ============
