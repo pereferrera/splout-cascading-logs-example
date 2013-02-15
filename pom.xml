@@ -73,12 +73,6 @@
 					<descriptorRefs>
 						<descriptorRef>jar-with-dependencies</descriptorRef>
 					</descriptorRefs>
-<!--					<archive>
-						<manifest>
-							<mainClass></mainClass>
-						</manifest>
-					</archive>
--->
 				</configuration>
 				<executions>
 					<execution>
@@ -129,7 +123,7 @@
 					</descriptors>
 					<archive>
 						<manifest>
-							<mainClass>com.datasalt.splout.examples.cascading.LogIndexer</mainClass>
+							<mainClass>com.datasalt.splout.examples.cascading.Driver</mainClass>
 						</manifest>
 					</archive>
 				</configuration>

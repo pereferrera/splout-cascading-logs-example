@@ -46,6 +46,31 @@ Try it
 ======
 
 - Start Splout SQL in your machine.
+
+From an IDE (local mode):
+
 - Run the "ApacheAccessLogGenerator"
-- Run "LogIndexer"
-- Open "timelines.html" in your browser of choice.
+- Run "LogIndexer" with parameters "-i access.log -o out-clogs -q http://localhost:4412"
+
+From Hadoop pseudo or distributed mode:
+
+	mvn install
+	cd target/
+	tar xvfz splout-cascading-logs-example-0.0.1-SNAPSHOT-distro.tar.gz 
+	cd splout-cascading-logs-example-0.0.1-SNAPSHOT/
+ 	hadoop jar splout-cascading-logs-example-0.0.1-SNAPSHOT-hadoop.jar generator
+	hadoop fs -put access.log .
+	hadoop jar splout-cascading-logs-example-0.0.1-SNAPSHOT-hadoop.jar indexer -i access.log -o out-clogs -q http://localhost:4412
+
+Finally:
+
+- Open "timelines.html" in your browser of choice -> This html communicates via JavaScript with Splout's REST API and shows some Google Visualization charts.
+- Go to Splout's webapp and execute any query you want using table "logs" or table "analysis", for example:
+
+	Detailed activity of user0 since the beginning of times:
+	(key = user0)
+	SELECT * FROM logs WHERE user = "user0" ORDER BY time DESC;
+	
+	Activity footprint from user0 since the beginning of times:
+	(key = user0)
+	SELECT category, COUNT(*) as activity FROM analytics WHERE user = "user0" GROUP BY category ORDER BY activity DESC LIMIT 5;";

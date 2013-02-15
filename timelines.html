@@ -30,7 +30,7 @@
         	chart.draw(data, { });
       	}
       	
-		totalActivityQuery = "SELECT category, COUNT(*) as activity FROM analytics WHERE user = '" + user + "' GROUP BY category ORDER BY category DESC LIMIT 5;";
+		totalActivityQuery = "SELECT category, COUNT(*) as activity FROM analytics WHERE user = '" + user + "' GROUP BY category ORDER BY activity DESC LIMIT 5;";
       	$.getJSON("http://" + sploutServer + "/api/query/" + tablespace + "?key=" + user + "&sql=" + totalActivityQuery + "&callback=?", callbackTotalActivity);
       }
       
