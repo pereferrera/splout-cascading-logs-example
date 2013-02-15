@@ -67,10 +67,10 @@ Finally:
 - Open "timelines.html" in your browser of choice: This html communicates via JavaScript with Splout's REST API and shows some Google Visualization charts.
 - Go to Splout's webapp and execute any query you want using table "logs" or table "analysis", for example:
 
-	Detailed activity of user0 since the beginning of times:
-	(key = user0)
-	SELECT * FROM logs WHERE user = "user0" ORDER BY time DESC;
-	
-	Activity footprint from user0 since the beginning of times:
-	(key = user0)
-	SELECT category, COUNT(*) as activity FROM analytics WHERE user = "user0" GROUP BY category ORDER BY activity DESC LIMIT 5;";
+- Detailed activity of user0 since the beginning of times (key = user0):
+
+	SELECT * FROM logs WHERE user = "user0" ORDER BY time DESC
+
+- Activity footprint from user0 since the beginning of times (key = user0):
+
+	SELECT category, COUNT(*) as activity FROM analytics WHERE user = "user0" GROUP BY category ORDER BY activity DESC LIMIT 5;
