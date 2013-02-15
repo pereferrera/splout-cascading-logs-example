@@ -1,17 +1,26 @@
 package com.datasalt.splout.examples.cascading;
 
+import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 
 import cascading.flow.Flow;
 import cascading.flow.hadoop.HadoopFlowConnector;
+import cascading.operation.aggregator.Count;
 import cascading.operation.regex.RegexParser;
 import cascading.operation.text.DateParser;
 import cascading.pipe.Each;
+import cascading.pipe.Every;
+import cascading.pipe.GroupBy;
 import cascading.pipe.Pipe;
 import cascading.property.AppProps;
 import cascading.scheme.hadoop.SequenceFile;
@@ -25,9 +34,21 @@ import cascading.tuple.Fields;
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
+import com.datasalt.pangool.tuplemr.mapred.lib.input.CascadingTupleInputFormat;
+import com.splout.db.common.SploutHadoopConfiguration;
+import com.splout.db.hadoop.StoreDeployerTool;
+import com.splout.db.hadoop.TableBuilder;
+import com.splout.db.hadoop.TablespaceBuilder;
+import com.splout.db.hadoop.TablespaceDepSpec;
+import com.splout.db.hadoop.TablespaceGenerator;
+import com.splout.db.hadoop.TupleSampler.DefaultSamplingOptions;
+import com.splout.db.hadoop.TupleSampler.SamplingType;
 
 /**
- * Work-in-progress.
+ * Simple Cascading + Splout SQL integration example for a Q&A website application and "loyalty campaigns" use case.
+ * Processes Apache logs using Cascading and produces two output files: one with the raw parsed logs and one with a 
+ * consolidated "groupBy" (user, category, date). Both output files can be then transformed into SQL tables in a Splout SQL
+ * tablespace and queried in real-time by a Q&A application. Example timelines and pie chart is showed in "timelines.html".
  */
 public class LogIndexer implements Tool {
 
@@ -55,7 +76,8 @@ public class LogIndexer implements Tool {
 	@Override
 	public int run(String[] args) throws Exception {
 		JCommander jComm = new JCommander(this);
-		jComm.setProgramName("Splout-Hadoop-Cascading Example - log parsing with Cascading & serving with Splout SQL.");
+		jComm
+		    .setProgramName("Splout-Hadoop-Cascading Example - log parsing with Cascading & serving with Splout SQL.");
 		try {
 			jComm.parse(args);
 		} catch(ParameterException e) {
@@ -68,17 +90,24 @@ public class LogIndexer implements Tool {
 			return -1;
 		}
 
-		indexLogs(inputPath, outputPath);
-		deployToSplout(outputPath, qnode, 2);
+		indexLogs(inputPath, outputPath + "-logs", outputPath + "-analytics");
+		deployToSplout(outputPath + "-logs", outputPath + "-analytics", qnode, 2);
 
 		return 1;
 	}
-	
+
 	/**
-	 * This method takes all the Apache logs as input and ...
+	 * This method takes all the Apache logs as input and produces two outputs. One is just the raw parsed logs
+	 * and the other one is a consolidated group-by (user, category, date). 
+	 * <p>
+	 * The raw logs parsed output can be used for Q&A : showing the exact activity for a user in a certain timeframe
+	 * in a structured way.
+	 * <p>
+	 * The simple group-by can be used for "loyalty campaigns", showing the "activity footprint" of each user in the
+	 * website: what categories does it visit the most, etc.  
 	 */
 	@SuppressWarnings("rawtypes")
-	public void indexLogs(String inputPath, String outputPath) {
+	public void indexLogs(String inputPath, String outputPathLogs, String outputPathAnalytics) {
 		// define what the input file looks like, "offset" is bytes from beginning
 		TextLine scheme = new TextLine(new Fields("offset", "line"));
 
@@ -87,37 +116,47 @@ public class LogIndexer implements Tool {
 		    inputPath);
 
 		// declare the field names we will parse out of the log file
-		Fields apacheFields = new Fields("ip", "user", "time", "method", "page", "code", "size");
+		Fields apacheFields = new Fields("ip", "user", "time", "method", "category", "page", "code", "size");
 
 		// define the regular expression to parse the log file with
-		String apacheRegex = "^([^ ]*) +[^ ]* +([^ ]*) +\\[([^]]*)\\] +\\\"([^ ]*) ([^ ]*) [^ ]*\\\" ([^ ]*) ([^ ]*).*$";
+		String apacheRegex = "^([^ ]*) +[^ ]* +([^ ]*) +\\[([^]]*)\\] +\\\"([^ ]*) /([^/]*)/([^ ]*) [^ ]*\\\" ([^ ]*) ([^ ]*).*$";
 
 		// declare the groups from the above regex we want to keep. each regex group will be given
 		// a field name from 'apacheFields', above, respectively
-		int[] allGroups = { 1, 2, 3, 4, 5, 6, 7 };
+		int[] allGroups = { 1, 2, 3, 4, 5, 6, 7, 8 };
 
 		// create the parser
 		RegexParser parser = new RegexParser(apacheFields, apacheRegex, allGroups);
 
 		// create the input analysis Pipe
-		Pipe parsePipe = new Each("parse", new Fields("line"), parser, Fields.RESULTS);
+		Pipe parsePipe = new Each("logs", new Fields("line"), parser, Fields.RESULTS);
 
 		// parse the date and split it into day + month + year
-		parsePipe = new Each(parsePipe, new Fields("time"), new DateParser(new Fields("day", "month",
-		    "year"), new int[] { Calendar.DAY_OF_MONTH, Calendar.MONTH, Calendar.YEAR },
-		    "dd/MMM/yyyy:HH:mm:ss"), Fields.ALL);
+		parsePipe = new Each(parsePipe, new Fields("time"), new DateParser(
+		    new Fields("day", "month", "year"), new int[] { Calendar.DAY_OF_MONTH, Calendar.MONTH,
+		        Calendar.YEAR }, "dd/MMM/yyyy:HH:mm:ss"), Fields.ALL);
+
+		Pipe analyzePipe = new GroupBy("analyze", parsePipe, new Fields("day", "month", "year", "user",
+		    "category"));
+		analyzePipe = new Every(analyzePipe, new Count());
 
 		// create a SINK tap to write to the default filesystem
 		// To use the output in Splout, save it in binary (SequenceFile).
 		// In this way integration is both efficient and easy (no need to re-parse the file again).
-		Tap remoteLogTap = new Hfs(new SequenceFile(Fields.ALL), outputPath, SinkMode.REPLACE);
+		Tap remoteLogTap = new Hfs(new SequenceFile(Fields.ALL), outputPathLogs, SinkMode.REPLACE);
+		Tap remoteAnalyticsTap = new Hfs(new SequenceFile(Fields.ALL), outputPathAnalytics, SinkMode.REPLACE);
 
 		// set the current job jar
 		Properties properties = new Properties();
 		AppProps.setApplicationJarClass(properties, LogIndexer.class);
 
+		Map<String, Tap> sinks = new HashMap<String, Tap>();
+		sinks.put("logs", remoteLogTap);
+		sinks.put("analyze", remoteAnalyticsTap);
+
 		// connect the assembly to the SOURCE and SINK taps
-		Flow parsedLogFlow = new HadoopFlowConnector(properties).connect(logTap, remoteLogTap, parsePipe);
+		Flow parsedLogFlow = new HadoopFlowConnector(properties).connect(logTap, sinks, parsePipe,
+		    analyzePipe);
 
 		// start execution of the flow (either locally or on a cluster)
 		parsedLogFlow.start();
@@ -129,19 +168,56 @@ public class LogIndexer implements Tool {
 	/**
 	 * Takes the output of the Cascading process and deploys it to Splout SQL using a QNode address.
 	 */
-	public void deployToSplout(String outputPath, String qNode, int nPartitions) throws Exception {
-		
-		// define the Schema of the Splout SQL table
-		CascadingTableGenerator.Args args = new CascadingTableGenerator.Args();
-		args.setColumnNames("ip", "user", "date", "method", "page", "response", "bytes", "day", "month", "year");
-		args.setTableName("apache_logs_analytics");
-		args.setTablespaceName("apache_logs_analytics");
-		args.setPartitionBy("user");
+	public void deployToSplout(String outputPathLogs, String outputPathAnalytics, String qNode,
+	    int nPartitions) throws Exception {
+		// add sqlite native libs to DistributedCache
+		if(!FileSystem.getLocal(conf).equals(FileSystem.get(conf))) {
+			SploutHadoopConfiguration.addSQLite4JavaNativeLibsToDC(conf);
+		}
 
-		CascadingTableGenerator generator = new CascadingTableGenerator(args, conf);
-		generator.deployToSplout(outputPath, qNode, nPartitions);
+		// delete tablespace-generated files if they already exist
+		FileSystem outputPathFileSystem = new Path(outputPath).getFileSystem(conf);
+		Path outputToGenerator = new Path(outputPath + "-generated");
+		if(outputPathFileSystem.exists(outputToGenerator)) {
+			outputPathFileSystem.delete(outputToGenerator, true);
+		}
+
+		// add Cascading serialization to Hadoop conf
+		CascadingTupleInputFormat.setSerializations(conf);
+		// define input format to Splout for each table:
+		CascadingTupleInputFormat inputFormatLogs = new CascadingTupleInputFormat("logs", "ip", "user",
+		    "time", "method", "category", "page", "code", "size", "day", "month", "year");
+		CascadingTupleInputFormat inputFormatAnalytics = new CascadingTupleInputFormat("analytics", "day",
+		    "month", "year", "user", "category", "count");
+
+		TablespaceBuilder builder = new TablespaceBuilder();
+		// built a Table instance of each table using the builder
+		TableBuilder logsTable = new TableBuilder(getConf());
+		logsTable.addCustomInputFormatFile(new Path(outputPathLogs), inputFormatLogs);
+		logsTable.partitionBy("user");
+
+		TableBuilder analyticsTable = new TableBuilder(getConf());
+		analyticsTable.addCustomInputFormatFile(new Path(outputPathAnalytics), inputFormatAnalytics);
+		analyticsTable.partitionBy("user");
+
+		builder.add(logsTable.build());
+		builder.add(analyticsTable.build());
+		// define number of partitions
+		builder.setNPartitions(nPartitions);
+
+		// instantiate and call the TablespaceGenerator with the output fo the TablespaceBuilder
+		TablespaceGenerator viewGenerator = new TablespaceGenerator(builder.build(), outputToGenerator,
+		    this.getClass());
+		viewGenerator.generateView(conf, SamplingType.DEFAULT, new DefaultSamplingOptions());
+
+		// finally, deploy the generated files
+		StoreDeployerTool deployer = new StoreDeployerTool(qNode, conf);
+		List<TablespaceDepSpec> specs = new ArrayList<TablespaceDepSpec>();
+		specs.add(new TablespaceDepSpec("cascading_splout_logs_example", outputToGenerator.toString(), 1, null));
+
+		deployer.deploy(specs);
 	}
-	
+
 	public static void main(String[] args) throws Exception {
 		ToolRunner.run(new LogIndexer(), args);
 	}

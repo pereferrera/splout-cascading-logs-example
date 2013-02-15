@@ -1,0 +1,70 @@
+<html>
+  <head>
+	<script src="http://code.jquery.com/jquery-1.4.4.js"></script>
+    <script type="text/javascript" src="https://www.google.com/jsapi"></script>
+    <script type='text/javascript'>
+      google.load('visualization', '1', {'packages':['annotatedtimeline', 'corechart']});
+      google.setOnLoadCallback(init);
+      
+      var sploutServer = "localhost:4412";
+      var tablespace = "cascading_splout_logs_example";
+      
+      function init() {
+      	drawCharts("user0");
+      }
+      
+      function drawCharts(user) {
+      	callbackTotalActivity = function(json) {
+      	    var data = new google.visualization.DataTable();
+        	data.addColumn('string', 'Category');
+        	data.addColumn('number', 'Activity');
+
+			var idx = 0;
+        	$.each(json.result, function(i, item) {
+	    		 data.addRows([[item.category, item.activity]]);
+	    		 drawCategoryChart(user, item.category, idx);
+	    		 idx++;
+	    	});
+	    		
+	    	var chart = new google.visualization.PieChart(document.getElementById('pie_chart_div'))
+        	chart.draw(data, { });
+      	}
+      	
+		totalActivityQuery = "SELECT category, COUNT(*) as activity FROM analytics WHERE user = '" + user + "' GROUP BY category ORDER BY category DESC LIMIT 5;";
+      	$.getJSON("http://" + sploutServer + "/api/query/" + tablespace + "?key=" + user + "&sql=" + totalActivityQuery + "&callback=?", callbackTotalActivity);
+      }
+      
+      function drawCategoryChart(user, category, idx) {     
+        callbackUserCategory = function(json) {
+        	var data = new google.visualization.DataTable();
+        	data.addColumn('date', 'Date');
+        	data.addColumn('number', category + ' activity');
+
+        	$.each(json.result, function(i, item) {
+	    		 data.addRows([[new Date(item.year, item.month, item.day), item.count]]);
+	    	});
+	    		
+	    	var chart = new google.visualization.AnnotatedTimeLine(document.getElementById('chart_div_' + idx));
+        	chart.draw(data, {displayRangeSelector: false});
+	    }
+	      
+	    userCategoryQuery  = "SELECT * FROM analytics WHERE category = '" + category + "' AND user = '" + user + "';";
+      	$.getJSON("http://" + sploutServer + "/api/query/" + tablespace + "?key=user0&sql=" + userCategoryQuery + "&callback=?", callbackUserCategory);
+      }
+    </script>
+  </head>
+
+  <body>
+  	<h2>Per-category activity analysis for user 0</h2>
+  	<p>This simple javascript page shows how to retrieve data easily from Splout SQL's REST API.</p>
+  	<p>In this example we are showing the top 5 categories the "user0" has interacted with, together with a timeline for each of these.</p>
+  	<p>You need to have Splout SQL on at port 4412 and have deployed the example tablespace from this project.</p> 
+    <!-- Note how you must specify the size of the container element explicitly! -->   
+    <div id='pie_chart_div' style='width: 700px; height: 240px;'></div>
+      <div id='chart_div_0' style='width: 700px; height: 240px;'></div>
+      <div id='chart_div_1' style='width: 700px; height: 240px;'></div>
+      <div id='chart_div_2' style='width: 700px; height: 240px;'></div>
+      <div id='chart_div_3' style='width: 700px; height: 240px;'></div>
+      <div id='chart_div_4' style='width: 700px; height: 240px;'></div>
+  </body>
+</html>
