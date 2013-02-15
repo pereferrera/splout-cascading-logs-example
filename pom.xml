@@ -19,6 +19,17 @@
 			<id>conjars.org</id>
   			<url>http://conjars.org/repo</url>
 		</repository>
+		<repository>
+            <id>datasalt-snapshots</id>
+            <name>Datasalt Snapshot Repository</name>
+            <url>http://clinker.datasalt.com/nexus/content/groups/public-snapshots</url>
+            <releases>
+                <enabled>false</enabled>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
 	</repositories>
 
 	<dependencies>
@@ -138,20 +149,5 @@
 				</executions>
 			</plugin>
 		</plugins>
-	</build>
-	
-		<!-- Use this Maven Repo for depending on latest (snapshot) versions if needed -->
-	<repositories>
-        <repository>
-            <id>datasalt-snapshots</id>
-            <name>Datasalt Snapshot Repository</name>
-            <url>http://clinker.datasalt.com/nexus/content/groups/public-snapshots</url>
-            <releases>
-                <enabled>false</enabled>
-            </releases>
-            <snapshots>
-                <enabled>true</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
+	</build>	
 </project>
