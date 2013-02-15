@@ -64,7 +64,7 @@ From Hadoop pseudo or distributed mode:
 
 Finally:
 
-- Open "timelines.html" in your browser of choice -> This html communicates via JavaScript with Splout's REST API and shows some Google Visualization charts.
+- Open "timelines.html" in your browser of choice: This html communicates via JavaScript with Splout's REST API and shows some Google Visualization charts.
 - Go to Splout's webapp and execute any query you want using table "logs" or table "analysis", for example:
 
 	Detailed activity of user0 since the beginning of times:
