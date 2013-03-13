@@ -34,7 +34,6 @@ import cascading.tuple.Fields;
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
-import com.datasalt.pangool.tuplemr.mapred.lib.input.CascadingTupleInputFormat;
 import com.splout.db.common.SploutHadoopConfiguration;
 import com.splout.db.hadoop.StoreDeployerTool;
 import com.splout.db.hadoop.TableBuilder;
@@ -182,22 +181,16 @@ public class LogIndexer implements Tool {
 			outputPathFileSystem.delete(outputToGenerator, true);
 		}
 
-		// add Cascading serialization to Hadoop conf
-		CascadingTupleInputFormat.setSerializations(conf);
-		// define input format to Splout for each table:
-		CascadingTupleInputFormat inputFormatLogs = new CascadingTupleInputFormat("logs", "ip", "user",
-		    "time", "method", "category", "page", "code", "size", "day", "month", "year");
-		CascadingTupleInputFormat inputFormatAnalytics = new CascadingTupleInputFormat("analytics", "day",
-		    "month", "year", "user", "category", "count");
-
 		TablespaceBuilder builder = new TablespaceBuilder();
 		// built a Table instance of each table using the builder
-		TableBuilder logsTable = new TableBuilder(getConf());
-		logsTable.addCustomInputFormatFile(new Path(outputPathLogs), inputFormatLogs);
+		TableBuilder logsTable = new TableBuilder("logs", getConf());
+		String[] logsColumns = new String[] { "ip", "user", "time", "method", "category", "page", "code", "size", "day", "month", "year" };
+		logsTable.addCascadingTable(new Path(outputPathLogs), logsColumns, conf);
 		logsTable.partitionBy("user");
 
-		TableBuilder analyticsTable = new TableBuilder(getConf());
-		analyticsTable.addCustomInputFormatFile(new Path(outputPathAnalytics), inputFormatAnalytics);
+		TableBuilder analyticsTable = new TableBuilder("analytics", getConf());
+		String[] analyticsColumns = new String[] { "day", "month", "year", "user", "category", "count" };
+		analyticsTable.addCascadingTable(new Path(outputPathAnalytics), analyticsColumns, conf);
 		analyticsTable.partitionBy("user");
 
 		builder.add(logsTable.build());
