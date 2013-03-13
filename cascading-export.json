@@ -1,0 +1,21 @@
+{
+	"name": "cascading_splout_logs_example",
+	"nPartitions": 2,
+	"partitionedTables": [{
+		"name": "logs",
+		"partitionFields": "user",
+		"tableInputs": [{
+			"inputType": "CASCADING",
+			"cascadingColumns": "ip,user,time,method,category,page,code,size,day,month,year",
+			"paths": [ "out-clogs-logs" ]
+		}]
+	},{
+		"name": "analytics",
+		"partitionFields": "user",
+		"tableInputs": [{
+			"inputType": "CASCADING",
+			"cascadingColumns": "day,month,year,user,category,count",
+			"paths": [ "out-clogs-analytics" ]
+		}]
+	}]
+}
